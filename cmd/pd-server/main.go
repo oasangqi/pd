@@ -68,12 +68,14 @@ func main() {
 	// TODO: Make it configurable if it has big impact on performance.
 	grpc_prometheus.EnableHandlingTimeHistogram()
 
+	// 定时推送metric
 	metricutil.Push(&cfg.Metric)
 
 	err = server.PrepareJoinCluster(cfg)
 	if err != nil {
 		log.Fatal("join error ", fmt.Sprintf("%+v", err))
 	}
+	// api.NewHandler为函数类型的参数
 	svr, err := server.CreateServer(cfg, api.NewHandler)
 	if err != nil {
 		log.Fatalf("create server failed: %v", fmt.Sprintf("%+v", err))

@@ -33,6 +33,7 @@ func NewHandler(svr *server.Server) http.Handler {
 	router := mux.NewRouter()
 	router.PathPrefix(apiPrefix).Handler(negroni.New(
 		newRedirector(svr),
+		// 注册api
 		negroni.Wrap(createRouter(apiPrefix, svr)),
 	))
 

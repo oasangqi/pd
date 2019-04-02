@@ -103,7 +103,6 @@ type Server struct {
 
 // CreateServer creates the UNINITIALIZED pd server with given configuration.
 func CreateServer(cfg *Config, apiRegister func(*Server) http.Handler) (*Server, error) {
-	log.Infof("PD config - %v", cfg)
 	rand.Seed(time.Now().UnixNano())
 
 	s := &Server{
@@ -117,11 +116,14 @@ func CreateServer(cfg *Config, apiRegister func(*Server) http.Handler) (*Server,
 	if err != nil {
 		return nil, err
 	}
+	// 注册http api
 	if apiRegister != nil {
 		etcdCfg.UserHandlers = map[string]http.Handler{
+			// MAP类型，key:value的初始化
 			pdAPIPrefix: apiRegister(s),
 		}
 	}
+	// 注册grpc服务 s实现pd的grpc服务接口
 	etcdCfg.ServiceRegister = func(gs *grpc.Server) { pdpb.RegisterPDServer(gs, s) }
 	s.etcdCfg = etcdCfg
 	if EnableZap {
@@ -139,6 +141,7 @@ func (s *Server) startEtcd(ctx context.Context) error {
 	ctx, cancel := context.WithTimeout(ctx, etcdStartTimeout)
 	defer cancel()
 
+	// 启动etcd
 	etcd, err := embed.StartEtcd(s.etcdCfg)
 	if err != nil {
 		return errors.WithStack(err)
@@ -159,14 +162,16 @@ func (s *Server) startEtcd(ctx context.Context) error {
 
 	select {
 	// Wait etcd until it is ready to use
+	// 等待etcd可用
 	case <-etcd.Server.ReadyNotify():
 	case <-ctx.Done():
 		return errors.Errorf("canceled when waiting embed etcd to be ready")
 	}
 
+	// 默认http://127.0.0.1:2379
 	endpoints := []string{s.etcdCfg.ACUrls[0].String()}
-	log.Infof("create etcd v3 client with endpoints %v", endpoints)
 
+	// 创建etcd v3连接
 	client, err := clientv3.New(clientv3.Config{
 		Endpoints:   endpoints,
 		DialTimeout: etcdTimeout,
@@ -179,6 +184,7 @@ func (s *Server) startEtcd(ctx context.Context) error {
 	etcdServerID := uint64(etcd.Server.ID())
 
 	// update advertise peer urls.
+	// 通过grpc接口向etcd请求etcd members
 	etcdMembers, err := etcdutil.ListEtcdMembers(client)
 	if err != nil {
 		return err

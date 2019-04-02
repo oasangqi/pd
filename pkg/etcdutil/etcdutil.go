@@ -55,6 +55,7 @@ func CheckClusterID(localClusterID types.ID, um types.URLsMap, tlsConfig *tls.Co
 		trp := &http.Transport{
 			TLSClientConfig: tlsConfig,
 		}
+		// 通过http api 向etcd获取members(默认http://127.0.0.1:2380/members)
 		remoteCluster, gerr := etcdserver.GetClusterFromRemotePeers(nil, []string{u}, trp)
 		trp.CloseIdleConnections()
 		if gerr != nil {

@@ -84,6 +84,7 @@ func PrepareJoinCluster(cfg *Config) error {
 	filePath := path.Join(cfg.DataDir, "join")
 	// Read the persist join config
 	if _, err := os.Stat(filePath); !os.IsNotExist(err) {
+		// 有join文件
 		s, err := ioutil.ReadFile(filePath)
 		if err != nil {
 			log.Fatal("read the join config meet error: ", err)
@@ -96,16 +97,20 @@ func PrepareJoinCluster(cfg *Config) error {
 	initialCluster := ""
 	// Cases with data directory.
 	if isDataExist(path.Join(cfg.DataDir, "member")) {
+		// 有member文件
+		// 已在集群中 取值即可
 		cfg.InitialCluster = initialCluster
 		cfg.InitialClusterState = embed.ClusterStateFlagExisting
 		return nil
 	}
 
+	// 没有目录
 	// Below are cases without data directory.
 	tlsConfig, err := cfg.Security.ToTLSConfig()
 	if err != nil {
 		return err
 	}
+	// 连etcd集群
 	client, err := clientv3.New(clientv3.Config{
 		Endpoints:   strings.Split(cfg.Join, ","),
 		DialTimeout: etcdutil.DefaultDialTimeout,
@@ -116,6 +121,7 @@ func PrepareJoinCluster(cfg *Config) error {
 	}
 	defer client.Close()
 
+	// 列出etcd成员
 	listResp, err := etcdutil.ListEtcdMembers(client)
 	if err != nil {
 		return err
@@ -123,10 +129,12 @@ func PrepareJoinCluster(cfg *Config) error {
 
 	existed := false
 	for _, m := range listResp.Members {
+		// etcd集群有节点未完成加入集群
 		if len(m.Name) == 0 {
 			return errors.New("there is a member that has not joined successfully")
 		}
 		if m.Name == cfg.Name {
+			// 集群中已有同名节点(丢失集群数据、或是加入了一个有同名节点的etcd集群)
 			existed = true
 		}
 	}
@@ -138,6 +146,7 @@ func PrepareJoinCluster(cfg *Config) error {
 
 	// - A new PD joins an existing cluster.
 	// - A deleted PD joins to previous cluster.
+	// 加入集群
 	addResp, err := etcdutil.AddEtcdMember(client, []string{cfg.AdvertisePeerUrls})
 	if err != nil {
 		return err
@@ -152,11 +161,14 @@ func PrepareJoinCluster(cfg *Config) error {
 	for _, memb := range listResp.Members {
 		n := memb.Name
 		if memb.ID == addResp.Member.ID {
+			// 该成员为自己
 			n = cfg.Name
 		}
+		// 没有节点名代表没有加进集群
 		if len(n) == 0 {
 			return errors.New("there is a member that has not joined successfully")
 		}
+		// 该节点的集群内部通信地址,eg: node1=http://127.0.0.1:2380
 		for _, m := range memb.PeerURLs {
 			pds = append(pds, fmt.Sprintf("%s=%s", n, m))
 		}
@@ -169,6 +181,7 @@ func PrepareJoinCluster(cfg *Config) error {
 		return errors.WithStack(err)
 	}
 
+	// 集群节点通信地址写入join文件
 	err = ioutil.WriteFile(filePath, []byte(cfg.InitialCluster), privateFileMode)
 	return errors.WithStack(err)
 }
